@@ -1,1 +1,2 @@
-# progetto_reti_logiche_2021
+# Progetto Finale Reti Logiche
+Progetto finale per l'esame di Reti Logiche al Politecnico di Milano, a.a. 2020/2021.
