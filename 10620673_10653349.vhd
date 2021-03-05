@@ -1,6 +1,7 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.std_logic_unsigned.all;
+use ieee.numeric_std.all;
 
 entity project_reti_logiche is
     port (
@@ -33,7 +34,8 @@ architecture rtl of project_reti_logiche is
     -- Difference between the maximum and the minimum pixel value
     signal delta_value      : std_logic_vector(7 downto 0);
     -- Number of positions to shift when computing the equalized pixel value
-    signal shift_level      : std_logic_vector(7 downto 0);
+    -- shift_level can have values from 1 to 8 so 4 bits are necessary
+    signal shift_level      : std_logic_vector(3 downto 0);
     -- Temporary pixel value after equalization
     signal temp_pixel       : std_logic_vector(7 downto 0);
     -- Equalized pixel value
@@ -42,6 +44,11 @@ architecture rtl of project_reti_logiche is
 begin
 
 process (i_clk) is
+    -- Count the minimum number of bits to 
+    variable pos_count      : integer := 7;
+    -- Store the delta_value incremented by 1
+    variable delta_plus_one : std_logic_vector(7 downto 0);
+
 begin
     if rising_edge(i_clk) then
         -- Reset the module
@@ -82,13 +89,23 @@ begin
                     if current_address = x"0000" then
                         -- Save the number of columns
                         n_col <= i_data;
+                        
                         current_state <= wait_read_state;
                         
+                        -- Move on to the next address to read
+                        current_address <= current_address + 1;
+                        o_address <= current_address + 1;
+                            
                     -- Memory with address 1 contains the number of rows 
                     elsif current_address = x"0001" then
                         -- Save the number of rows
                         n_rig <= i_data;
+                        
                         current_state <= wait_read_state;
+                        
+                        -- Move on to the next address to read
+                        current_address <= current_address + 1;
+                        o_address <= current_address + 1;
                         
                     -- Next addresses contain the pixel values of the original image
                     elsif current_address < n_col * n_rig + 2 then
@@ -108,17 +125,39 @@ begin
                         if min_pixel_value = x"00" and max_pixel_value = x"ff" then
                             current_address <= x"0001";
                         end if;
+                        
+                        -- Check if we've reached the last pixel or not
+                        if current_address < n_col * n_rig + 1 then
+                            -- If we're not at the end, move on to the next address to read
+                            current_address <= current_address + 1;
+                            o_address <= current_address + 1;
+                        else
+                            -- If we've reached the end, calculate delta_value and shift_level
+                            delta_value <= max_pixel_value - min_pixel_value;
+                            delta_plus_one := max_pixel_value - min_pixel_value + 1;
                             
+                            -- Take away the leading zeroes from the position count to find 
+                            -- floor(log2(delta_value + 1))
+                            while pos_count > -1 and delta_plus_one(pos_count) = '0' loop
+                                pos_count := pos_count - 1;
+                            end loop;
+                            
+                            shift_level <= std_logic_vector(to_unsigned(8 - pos_count, 4));
+                            
+                            -- Move back to the first pixel of the image
+                            current_address <= x"0002";
+                            o_address <= x"0002";
+                            
+                        end if;
+                        
                         current_state <= wait_read_state;
                         
+                    -- Unknow address: do nothing    
                     else
-                            current_state <= reset_state;
+                        
                     end if;
-                    
-                    -- Move on to the next address to read
-                    current_address <= current_address + 1;
-                    o_address <= current_address + 1;
                 
+                -- Undefined state: do nothing
                 when others =>        
             
             end case;
