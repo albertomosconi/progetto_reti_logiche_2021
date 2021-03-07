@@ -29,7 +29,8 @@ architecture rtl of project_reti_logiche is
         RESET_STATE, 
         WAIT_READ_STATE, 
         READ_STATE,
-        SHIFT_COUNTER_STATE
+        SHIFT_COUNTER_STATE,
+        WAIT_WRITE_STATE
     );
     signal current_state    : state_type := RESET_STATE;
     -- Maximum pixel value in the original image
@@ -46,12 +47,15 @@ architecture rtl of project_reti_logiche is
     signal temp_pixel       : std_logic_vector(7 downto 0);
     -- Equalized pixel value
     signal new_pixel_value  : std_logic_vector(7 downto 0);
+    --
+    signal second_phase     : std_logic := '0';
 
 begin
 
 process (i_clk, i_rst) is
     -- Store the delta_value incremented by 1
     variable delta_plus_one : std_logic_vector(7 downto 0);
+    variable temp           : std_logic_vector(7 downto 0);
 
 begin
     if i_rst = '1' then
@@ -71,6 +75,7 @@ begin
         temp_pixel <= (others => '0');
         new_pixel_value <= (others => '0');
         shift_level <= (others => '0');
+        second_phase <= '0';
         
         current_state <= RESET_STATE;
         
@@ -97,6 +102,7 @@ begin
                 new_pixel_value <= (others => '0');
                 shift_level <= (others => '0');
                 current_state <= RESET_STATE;
+                second_phase <= '0';
                 
                 -- If the start signal is received, begin computation, otherwise do nothing
                 if i_start = '1' then
@@ -123,6 +129,7 @@ begin
                 temp_pixel <= temp_pixel;
                 new_pixel_value <= new_pixel_value;
                 shift_level <= shift_level;
+                second_phase <= second_phase;
             
                 -- Skip a cycle before reading in memory
                 current_state <= READ_STATE;
@@ -145,6 +152,7 @@ begin
                 temp_pixel <= temp_pixel;
                 new_pixel_value <= new_pixel_value;
                 shift_level <= shift_level;
+                second_phase <= second_phase;
             
                 -- Memory with address 0 contains the number of columns
                 if current_address = x"0000" then
@@ -170,39 +178,52 @@ begin
                     
                 -- Next addresses contain the pixel values of the original image
                 elsif current_address < n_col * n_rig + 2 then
-                    -- If a new maximum value is found, save it
-                    if i_data > max_pixel_value then
-                        max_pixel_value <= i_data;
-                    end if;
+                
+                    if second_phase = '0' then 
                     
-                    -- If a new minimum value if found, save it
-                    if i_data < min_pixel_value then
-                        min_pixel_value <= i_data;
-                    end if;
-                    
-                    -- 0 and 255 are respectively the smallest and biggest values possible.
-                    -- If we have already encountered them, there's no need to keep going
-                    -- and the equalization process can start
-                    --if min_pixel_value = x"00" and max_pixel_value = x"ff" then
-                    --    current_address <= x"0001";
-                    --end if;
-                    
-                    -- Check if we've reached the last pixel or not
-                    if current_address < n_col * n_rig + 1 then
-                        -- If we're not at the end, move on to the next address to read
-                        current_address <= current_address + 1;
-                        o_address <= current_address + 1;
+                        -- If a new maximum value is found, save it
+                        if i_data > max_pixel_value then
+                            max_pixel_value <= i_data;
+                        end if;
                         
-                        current_state <= WAIT_READ_STATE;
+                        -- If a new minimum value if found, save it
+                        if i_data < min_pixel_value then
+                            min_pixel_value <= i_data;
+                        end if;
+                    
+                        -- Check if we've reached the last pixel or not
+                        if current_address < n_col * n_rig + 1 then
+                            -- If we're not at the end, move on to the next address to read
+                            current_address <= current_address + 1;
+                            o_address <= current_address + 1;
+                            
+                            current_state <= WAIT_READ_STATE;
+                            
+                        else
+                            -- If we've reached the end, calculate delta_value
+                            delta_value <= max_pixel_value - min_pixel_value;
+                            -- Change state to calculate the shift level
+                            current_state <= SHIFT_COUNTER_STATE;
+                            
+                        end if;
                         
                     else
-                        -- If we've reached the end, calculate delta_value
-                        delta_value <= max_pixel_value - min_pixel_value;
-                        -- Change state to calculate the shift level
-                        current_state <= SHIFT_COUNTER_STATE;
-                        
-                    end if;
                     
+                        temp := i_data - min_pixel_value;
+                    
+                        if std_logic_vector(shift_left(unsigned(temp), TO_INTEGER(unsigned(shift_level)))) > x"ff" then
+                            o_data <= x"ff";
+                            
+                        else 
+                            o_data <= std_logic_vector(shift_left(unsigned(temp), TO_INTEGER(unsigned(shift_level))));
+                        
+                        end if;
+                        
+                        o_address <= current_address + n_col * n_rig;
+                        o_we <= '1';
+                        current_state <= WAIT_WRITE_STATE;
+                                        
+                    end if;
                 end if;
             
             -- SHIFT COUNTER STATE: subtract number of leading zeros from the total 
@@ -225,6 +246,7 @@ begin
                 temp_pixel <= temp_pixel;
                 new_pixel_value <= new_pixel_value;
                 shift_level <= shift_level;
+                second_phase <= second_phase;
                 
                 delta_plus_one := max_pixel_value - min_pixel_value + 1;
                 
@@ -240,9 +262,34 @@ begin
                     o_address <= x"0002";
                     
                     -- Start reading the original bytes again to recalculate values
+                    second_phase <= '1';
                     current_state <= WAIT_READ_STATE;
                     
                 end if;
+            
+            -- WAIT WRITE STATE
+            when WAIT_WRITE_STATE =>
+                -- Set values to default
+                o_address <= current_address;
+                o_done <= '0';
+                o_en <= '1';
+                o_we <= '0';
+                o_data <= (others => '0');
+                n_col <= n_col;
+                n_rig <= n_rig;
+                current_address <= current_address;
+                pos_count <= 7;
+                max_pixel_value <= max_pixel_value;
+                min_pixel_value <= min_pixel_value;
+                delta_value <= delta_value;
+                temp_pixel <= temp_pixel;
+                new_pixel_value <= new_pixel_value;
+                shift_level <= shift_level;             
+                current_state <= current_state;
+                second_phase <= second_phase;
+                
+                current_address <= current_address + 1;
+                current_state <= WAIT_READ_STATE;
                 
             -- Undefined state: do nothing
             when others =>
@@ -263,6 +310,7 @@ begin
                 new_pixel_value <= new_pixel_value;
                 shift_level <= shift_level;             
                 current_state <= current_state;
+                second_phase <= second_phase;
         
         end case;
     end if;
