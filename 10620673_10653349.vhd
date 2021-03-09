@@ -30,7 +30,8 @@ architecture rtl of project_reti_logiche is
         WAIT_READ_STATE, 
         READ_STATE,
         SHIFT_COUNTER_STATE,
-        WAIT_WRITE_STATE
+        WAIT_WRITE_STATE,
+        DONE_STATE
     );
     signal current_state    : state_type := RESET_STATE;
     -- Maximum pixel value in the original image
@@ -42,7 +43,7 @@ architecture rtl of project_reti_logiche is
     -- Number of positions to shift when computing the equalized pixel value
     -- shift_level can have values from 1 to 8 so 4 bits are necessary
     signal shift_level      : std_logic_vector(3 downto 0);
-    signal pos_count        : integer := 7;
+    signal pos_count        : integer := 8;
     -- Temporary pixel value after equalization
     signal temp_pixel       : std_logic_vector(7 downto 0);
     -- Equalized pixel value
@@ -54,8 +55,8 @@ begin
 
 process (i_clk, i_rst) is
     -- Store the delta_value incremented by 1
-    variable delta_plus_one : std_logic_vector(7 downto 0);
-    variable temp           : std_logic_vector(7 downto 0);
+    variable delta_plus_one : std_logic_vector(8 downto 0);
+    variable temp           : std_logic_vector(8 downto 0);
 
 begin
     if i_rst = '1' then
@@ -68,7 +69,7 @@ begin
         current_address <= (others => '0');
         n_col <= (others => '0');
         n_rig <= (others => '0');
-        pos_count <= 7;
+        pos_count <= 8;
         max_pixel_value <= (others => '0');
         min_pixel_value <= (others => '1');
         delta_value <= (others => '0');
@@ -94,7 +95,7 @@ begin
                 current_address <= (others => '0');
                 n_col <= (others => '0');
                 n_rig <= (others => '0');
-                pos_count <= 7;
+                pos_count <= 8;
                 max_pixel_value <= (others => '0');
                 min_pixel_value <= (others => '1');
                 delta_value <= (others => '0');
@@ -122,7 +123,7 @@ begin
                 n_col <= n_col;
                 n_rig <= n_rig;
                 current_address <= current_address;
-                pos_count <= 7;
+                pos_count <= 8;
                 max_pixel_value <= max_pixel_value;
                 min_pixel_value <= min_pixel_value;
                 delta_value <= delta_value;
@@ -145,7 +146,7 @@ begin
                 n_col <= n_col;
                 n_rig <= n_rig;
                 current_address <= current_address;
-                pos_count <= 7;
+                pos_count <= 8;
                 max_pixel_value <= max_pixel_value;
                 min_pixel_value <= min_pixel_value;
                 delta_value <= delta_value;
@@ -209,13 +210,15 @@ begin
                         
                     else
                     
-                        temp := i_data - min_pixel_value;
+                        temp := ('0' & i_data) - ('0' & min_pixel_value);
+                        
+                        temp := std_logic_vector(shift_left(unsigned(temp), TO_INTEGER(unsigned(shift_level))));
                     
-                        if std_logic_vector(shift_left(unsigned(temp), TO_INTEGER(unsigned(shift_level)))) > x"ff" then
+                        if temp > x"ff" then
                             o_data <= x"ff";
                             
                         else 
-                            o_data <= std_logic_vector(shift_left(unsigned(temp), TO_INTEGER(unsigned(shift_level))));
+                            o_data <= temp(7 downto 0);
                         
                         end if;
                         
@@ -239,7 +242,7 @@ begin
                 n_col <= n_col;
                 n_rig <= n_rig;
                 current_address <= current_address;
-                pos_count <= 7;
+                pos_count <= 8;
                 max_pixel_value <= max_pixel_value;
                 min_pixel_value <= min_pixel_value;
                 delta_value <= delta_value;
@@ -248,7 +251,7 @@ begin
                 shift_level <= shift_level;
                 second_phase <= second_phase;
                 
-                delta_plus_one := max_pixel_value - min_pixel_value + 1;
+                delta_plus_one := ('0' & max_pixel_value) - ('0' & min_pixel_value) + 1;
                 
                 if delta_plus_one(pos_count) = '0' then
                     pos_count <= pos_count - 1;
@@ -278,7 +281,7 @@ begin
                 n_col <= n_col;
                 n_rig <= n_rig;
                 current_address <= current_address;
-                pos_count <= 7;
+                pos_count <= 8;
                 max_pixel_value <= max_pixel_value;
                 min_pixel_value <= min_pixel_value;
                 delta_value <= delta_value;
@@ -288,8 +291,53 @@ begin
                 current_state <= current_state;
                 second_phase <= second_phase;
                 
-                current_address <= current_address + 1;
-                current_state <= WAIT_READ_STATE;
+                -- If there are more bytes to read, keep going
+                -- otherwise move to final state.
+                
+                if current_address < n_col * n_rig + 1 then
+                
+                    current_address <= current_address + 1;
+                    o_address <= current_address + 1;
+                    current_state <= WAIT_READ_STATE;
+                    
+                else
+                    
+                    current_address <= x"0000";
+                    o_address <= x"0000";
+                    o_done <= '1';
+                    second_phase <= '0';
+                    current_state <= DONE_STATE;
+                
+                end if;
+            
+            -- DONE STATE
+            when DONE_STATE =>
+                -- Set values to default
+                o_address <= current_address;
+                o_en <= '0';
+                o_we <= '0';
+                o_data <= (others => '0');
+                n_col <= n_col;
+                n_rig <= n_rig;
+                current_address <= current_address;
+                pos_count <= 8;
+                max_pixel_value <= max_pixel_value;
+                min_pixel_value <= min_pixel_value;
+                delta_value <= delta_value;
+                temp_pixel <= temp_pixel;
+                new_pixel_value <= new_pixel_value;
+                shift_level <= shift_level;     
+                second_phase <= second_phase;
+                
+                current_state <= DONE_STATE;
+                o_done <= '1';
+                
+                if i_start = '0' then
+                    
+                    o_done <= '0';
+                    current_state <= RESET_STATE;
+                    
+                end if;
                 
             -- Undefined state: do nothing
             when others =>
@@ -302,7 +350,7 @@ begin
                 n_col <= n_col;
                 n_rig <= n_rig;
                 current_address <= current_address;
-                pos_count <= 7;
+                pos_count <= 8;
                 max_pixel_value <= max_pixel_value;
                 min_pixel_value <= min_pixel_value;
                 delta_value <= delta_value;
