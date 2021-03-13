@@ -92,6 +92,21 @@ begin
         case current_state is
             -- RESET STATE: waiting for start signal
             when RESET_STATE =>
+                -- Set values to default
+                o_address <= (others => '0');
+                o_done <= '0';
+                o_en <= '0';
+                o_we <= '0';
+                o_data <= (others => '0');
+                current_address <= (others => '0');
+                n_col <= (others => '0');
+                n_rig <= (others => '0');
+                pos_count <= 8;
+                max_pixel_value <= (others => '0');
+                min_pixel_value <= (others => '1');
+                shift_level <= (others => '0');
+                second_phase <= '0';
+                
                 -- If the start signal is received, begin computation, otherwise do nothing
                 if i_start = '1' then
                     -- Signal to the RAM that we want to read
