@@ -1,19 +1,19 @@
-library ieee;
-use ieee.std_logic_1164.all;
-use ieee.std_logic_unsigned.all;
-use ieee.numeric_std.all;
+library IEEE;
+use IEEE.std_logic_1164.all;
+use IEEE.std_logic_unsigned.all;
+use IEEE.numeric_std.all;
 
 entity project_reti_logiche is
     port (
         i_clk       : in    std_logic; -- Clock signal
         i_rst       : in    std_logic; -- Reset signal
         i_start     : in    std_logic; -- Start signal
-        i_data      : in    std_logic_vector(7 downto 0);
-        o_address   : out   std_logic_vector(15 downto 0);
-        o_done      : out   std_logic;
-        o_en        : out   std_logic;
-        o_we        : out   std_logic;
-        o_data      : out   std_logic_vector(7 downto 0)
+        i_data      : in    std_logic_vector(7 downto 0); -- The content of the memory
+        o_address   : out   std_logic_vector(15 downto 0); -- The address to read/write to
+        o_done      : out   std_logic; -- Signals when equalization is done
+        o_en        : out   std_logic; -- Signal to the RAM to read the memory
+        o_we        : out   std_logic; -- Signals to the RAM to write in memory
+        o_data      : out   std_logic_vector(7 downto 0) -- Content to be written in memory
     );
 end project_reti_logiche;
 
@@ -26,37 +26,32 @@ architecture rtl of project_reti_logiche is
     signal current_address  : std_logic_vector(15 downto 0) := (others => '0');
     -- Type definition of the states in the Finite State Machine
     type state_type is (
-        RESET_STATE, 
-        WAIT_READ_STATE, 
-        READ_STATE,
-        SHIFT_COUNTER_STATE,
-        WAIT_WRITE_STATE,
-        DONE_STATE
+        RESET_STATE, WAIT_READ_STATE, 
+        READ_STATE, SHIFT_COUNTER_STATE,
+        WAIT_WRITE_STATE, DONE_STATE
     );
     signal current_state    : state_type := RESET_STATE;
     -- Maximum pixel value in the original image
     signal max_pixel_value  : std_logic_vector(7 downto 0) := x"00";
     -- Minimum pixel value in the original image
     signal min_pixel_value  : std_logic_vector(7 downto 0) := x"ff";
-    -- Difference between the maximum and the minimum pixel value
-    signal delta_value      : std_logic_vector(7 downto 0);
     -- Number of positions to shift when computing the equalized pixel value
     -- shift_level can have values from 1 to 8 so 4 bits are necessary
     signal shift_level      : std_logic_vector(3 downto 0);
+    -- Counts the number of leading zeroes during the calculation of the shift_level
     signal pos_count        : integer := 8;
-    -- Temporary pixel value after equalization
-    signal temp_pixel       : std_logic_vector(7 downto 0);
-    -- Equalized pixel value
-    signal new_pixel_value  : std_logic_vector(7 downto 0);
-    --
+    -- Has value 0 when the module is reading the image dimensions and finding
+    -- the maximum and minumum pixel value, it has value 1 when it's calculating
+    -- and saving in memory the new pixel values
     signal second_phase     : std_logic := '0';
 
 begin
 
 process (i_clk, i_rst) is
-    -- Store the delta_value incremented by 1
-    variable delta_plus_one : std_logic_vector(8 downto 0);
-    variable temp           : std_logic_vector(8 downto 0);
+    -- The difference between the maximum and minimum pixel value, incremented by 1
+    variable delta_plus_one     : std_logic_vector(8 downto 0);
+    -- The temporary value of the new pixel
+    variable temp_pixel_value   : std_logic_vector(8 downto 0);
 
 begin
     if i_rst = '1' then
@@ -72,39 +67,31 @@ begin
         pos_count <= 8;
         max_pixel_value <= (others => '0');
         min_pixel_value <= (others => '1');
-        delta_value <= (others => '0');
-        temp_pixel <= (others => '0');
-        new_pixel_value <= (others => '0');
         shift_level <= (others => '0');
         second_phase <= '0';
         
         current_state <= RESET_STATE;
         
     elsif rising_edge(i_clk) then
-    
+        -- Set values to default
+        o_address <= current_address;
+        o_done <= '0';
+        o_en <= '0';
+        o_we <= '0';
+        o_data <= (others => '0');
+        n_col <= n_col;
+        n_rig <= n_rig;
+        current_address <= current_address;
+        pos_count <= pos_count;
+        max_pixel_value <= max_pixel_value;
+        min_pixel_value <= min_pixel_value;
+        shift_level <= shift_level;             
+        current_state <= current_state;
+        second_phase <= second_phase;
+        
         case current_state is
             -- RESET STATE: waiting for start signal
             when RESET_STATE =>
-            
-                -- Set values to default
-                o_address <= (others => '0');
-                o_done <= '0';
-                o_en <= '0';
-                o_we <= '0';
-                o_data <= (others => '0');
-                current_address <= (others => '0');
-                n_col <= (others => '0');
-                n_rig <= (others => '0');
-                pos_count <= 8;
-                max_pixel_value <= (others => '0');
-                min_pixel_value <= (others => '1');
-                delta_value <= (others => '0');
-                temp_pixel <= (others => '0');
-                new_pixel_value <= (others => '0');
-                shift_level <= (others => '0');
-                current_state <= RESET_STATE;
-                second_phase <= '0';
-                
                 -- If the start signal is received, begin computation, otherwise do nothing
                 if i_start = '1' then
                     -- Signal to the RAM that we want to read
@@ -114,46 +101,16 @@ begin
             
             -- WAIT READ STATE: waiting for the RAM to give the requested memory contents
             when WAIT_READ_STATE =>
-                
-                o_address <= current_address;
-                o_done <= '0';
                 o_en <= '1';
                 o_we <= '0';
-                o_data <= (others => '0');
-                n_col <= n_col;
-                n_rig <= n_rig;
-                current_address <= current_address;
-                pos_count <= 8;
-                max_pixel_value <= max_pixel_value;
-                min_pixel_value <= min_pixel_value;
-                delta_value <= delta_value;
-                temp_pixel <= temp_pixel;
-                new_pixel_value <= new_pixel_value;
-                shift_level <= shift_level;
-                second_phase <= second_phase;
             
                 -- Skip a cycle before reading in memory
                 current_state <= READ_STATE;
             
             -- READ STATE: reading and saving contents from the RAM
             when READ_STATE =>
-                -- Set values to default
-                o_address <= current_address;
-                o_done <= '0';
                 o_en <= '1';
                 o_we <= '0';
-                o_data <= (others => '0');
-                n_col <= n_col;
-                n_rig <= n_rig;
-                current_address <= current_address;
-                pos_count <= 8;
-                max_pixel_value <= max_pixel_value;
-                min_pixel_value <= min_pixel_value;
-                delta_value <= delta_value;
-                temp_pixel <= temp_pixel;
-                new_pixel_value <= new_pixel_value;
-                shift_level <= shift_level;
-                second_phase <= second_phase;
             
                 -- Memory with address 0 contains the number of columns
                 if current_address = x"0000" then
@@ -180,8 +137,7 @@ begin
                 -- Next addresses contain the pixel values of the original image
                 elsif current_address < n_col * n_rig + 2 then
                 
-                    if second_phase = '0' then 
-                    
+                    if second_phase = '0' then
                         -- If a new maximum value is found, save it
                         if i_data > max_pixel_value then
                             max_pixel_value <= i_data;
@@ -201,24 +157,20 @@ begin
                             current_state <= WAIT_READ_STATE;
                             
                         else
-                            -- If we've reached the end, calculate delta_value
-                            delta_value <= max_pixel_value - min_pixel_value;
                             -- Change state to calculate the shift level
                             current_state <= SHIFT_COUNTER_STATE;
                             
                         end if;
                         
                     else
+                        temp_pixel_value := ('0' & i_data) - ('0' & min_pixel_value);
+                        temp_pixel_value := std_logic_vector(shift_left(unsigned(temp_pixel_value), TO_INTEGER(unsigned(shift_level))));
                     
-                        temp := ('0' & i_data) - ('0' & min_pixel_value);
-                        
-                        temp := std_logic_vector(shift_left(unsigned(temp), TO_INTEGER(unsigned(shift_level))));
-                    
-                        if temp > x"ff" then
+                        if temp_pixel_value > x"ff" then
                             o_data <= x"ff";
                             
                         else 
-                            o_data <= temp(7 downto 0);
+                            o_data <= temp_pixel_value(7 downto 0);
                         
                         end if;
                         
@@ -232,24 +184,8 @@ begin
             -- SHIFT COUNTER STATE: subtract number of leading zeros from the total 
             -- number of bits in the vector delta_value + 1
             when SHIFT_COUNTER_STATE =>
-                
-                -- Set values to default
-                o_address <= current_address;
-                o_done <= '0';
                 o_en <= '1';
                 o_we <= '0';
-                o_data <= (others => '0');
-                n_col <= n_col;
-                n_rig <= n_rig;
-                current_address <= current_address;
-                pos_count <= 8;
-                max_pixel_value <= max_pixel_value;
-                min_pixel_value <= min_pixel_value;
-                delta_value <= delta_value;
-                temp_pixel <= temp_pixel;
-                new_pixel_value <= new_pixel_value;
-                shift_level <= shift_level;
-                second_phase <= second_phase;
                 
                 delta_plus_one := ('0' & max_pixel_value) - ('0' & min_pixel_value) + 1;
                 
@@ -272,36 +208,17 @@ begin
             
             -- WAIT WRITE STATE
             when WAIT_WRITE_STATE =>
-                -- Set values to default
-                o_address <= current_address;
-                o_done <= '0';
                 o_en <= '1';
                 o_we <= '0';
-                o_data <= (others => '0');
-                n_col <= n_col;
-                n_rig <= n_rig;
-                current_address <= current_address;
-                pos_count <= 8;
-                max_pixel_value <= max_pixel_value;
-                min_pixel_value <= min_pixel_value;
-                delta_value <= delta_value;
-                temp_pixel <= temp_pixel;
-                new_pixel_value <= new_pixel_value;
-                shift_level <= shift_level;             
-                current_state <= current_state;
-                second_phase <= second_phase;
                 
                 -- If there are more bytes to read, keep going
                 -- otherwise move to final state.
-                
                 if current_address < n_col * n_rig + 1 then
-                
                     current_address <= current_address + 1;
                     o_address <= current_address + 1;
                     current_state <= WAIT_READ_STATE;
                     
                 else
-                    
                     current_address <= x"0000";
                     o_address <= x"0000";
                     o_done <= '1';
@@ -312,28 +229,10 @@ begin
             
             -- DONE STATE
             when DONE_STATE =>
-                -- Set values to default
-                o_address <= current_address;
-                o_en <= '0';
-                o_we <= '0';
-                o_data <= (others => '0');
-                n_col <= n_col;
-                n_rig <= n_rig;
-                current_address <= current_address;
-                pos_count <= 8;
-                max_pixel_value <= max_pixel_value;
-                min_pixel_value <= min_pixel_value;
-                delta_value <= delta_value;
-                temp_pixel <= temp_pixel;
-                new_pixel_value <= new_pixel_value;
-                shift_level <= shift_level;     
-                second_phase <= second_phase;
-                
                 current_state <= DONE_STATE;
                 o_done <= '1';
                 
                 if i_start = '0' then
-                    
                     o_done <= '0';
                     current_state <= RESET_STATE;
                     
@@ -341,24 +240,6 @@ begin
                 
             -- Undefined state: do nothing
             when others =>
-                -- Set values to default
-                o_address <= current_address;
-                o_done <= '0';
-                o_en <= '1';
-                o_we <= '0';
-                o_data <= (others => '0');
-                n_col <= n_col;
-                n_rig <= n_rig;
-                current_address <= current_address;
-                pos_count <= 8;
-                max_pixel_value <= max_pixel_value;
-                min_pixel_value <= min_pixel_value;
-                delta_value <= delta_value;
-                temp_pixel <= temp_pixel;
-                new_pixel_value <= new_pixel_value;
-                shift_level <= shift_level;             
-                current_state <= current_state;
-                second_phase <= second_phase;
         
         end case;
     end if;
