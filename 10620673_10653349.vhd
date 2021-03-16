@@ -149,6 +149,11 @@ begin
                     
                     current_state <= WAIT_READ_STATE;
                     
+                -- One (or both) of the dimensions of the image is 0
+                elsif n_col = x"00" or n_rig = x"00" then
+                    o_done <= '1';
+                    current_state <= DONE_STATE;
+                                    
                 -- Next addresses contain the pixel values of the original image
                 elsif current_address < n_col * n_rig + 2 then
                 
@@ -193,7 +198,7 @@ begin
                         o_we <= '1';
                         current_state <= WAIT_WRITE_STATE;
                                         
-                    end if;
+                    end if;                    
                 end if;
             
             -- SHIFT COUNTER STATE: subtract number of leading zeros from the total 
@@ -234,10 +239,10 @@ begin
                     current_state <= WAIT_READ_STATE;
                     
                 else
-                    current_address <= x"0000";
-                    o_address <= x"0000";
+--                    current_address <= x"0000";
+--                    o_address <= x"0000";
                     o_done <= '1';
-                    second_phase <= '0';
+--                    second_phase <= '0';
                     current_state <= DONE_STATE;
                 
                 end if;
