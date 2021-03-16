@@ -26,10 +26,14 @@ architecture rtl of project_reti_logiche is
     signal current_address  : std_logic_vector(15 downto 0) := (others => '0');
     -- Type definition of the states in the Finite State Machine
     type state_type is (
-        RESET_STATE, WAIT_READ_STATE, 
-        READ_STATE, SHIFT_COUNTER_STATE,
-        WAIT_WRITE_STATE, DONE_STATE
+        RESET_STATE,
+        WAIT_READ_STATE,
+        READ_STATE,
+        SHIFT_COUNTER_STATE,
+        WAIT_WRITE_STATE,
+        DONE_STATE
     );
+    -- The current state of the FSM
     signal current_state    : state_type := RESET_STATE;
     -- Maximum pixel value in the original image
     signal max_pixel_value  : std_logic_vector(7 downto 0) := x"00";
@@ -55,7 +59,7 @@ process (i_clk, i_rst) is
 
 begin
     if i_rst = '1' then
-        -- Set values to default
+        -- Set values to initial value
         o_address <= (others => '0');
         o_done <= '0';
         o_en <= '0';
@@ -73,7 +77,7 @@ begin
         current_state <= RESET_STATE;
         
     elsif rising_edge(i_clk) then
-        -- Set values to default
+        -- Default variable assignment to avoid inferred latches
         o_address <= current_address;
         o_done <= '0';
         o_en <= '0';
@@ -92,7 +96,7 @@ begin
         case current_state is
             -- RESET STATE: waiting for start signal
             when RESET_STATE =>
-                -- Set values to default
+                -- Set values to initial value
                 o_address <= (others => '0');
                 o_done <= '0';
                 o_en <= '0';
@@ -156,7 +160,7 @@ begin
                                     
                 -- Next addresses contain the pixel values of the original image
                 elsif current_address < n_col * n_rig + 2 then
-                
+                    -- First phase: find image size, max and min pixel values and shift level
                     if second_phase = '0' then
                         -- If a new maximum value is found, save it
                         if i_data > max_pixel_value then
@@ -168,32 +172,33 @@ begin
                             min_pixel_value <= i_data;
                         end if;
                     
-                        -- Check if we've reached the last pixel or not
-                        if current_address < n_col * n_rig + 1 then
+                        -- Check if we've reached the last pixel or if the best minimum (0)
+                        -- and maximum (255) have been found
+                        if current_address = n_col * n_rig + 1 or (min_pixel_value = x"00" and max_pixel_value = x"ff")
+                        then
+                            -- Change state to calculate the shift level
+                            current_state <= SHIFT_COUNTER_STATE;
+                            
+                        else
                             -- If we're not at the end, move on to the next address to read
                             current_address <= current_address + 1;
                             o_address <= current_address + 1;
                             
                             current_state <= WAIT_READ_STATE;
                             
-                        else
-                            -- Change state to calculate the shift level
-                            current_state <= SHIFT_COUNTER_STATE;
-                            
                         end if;
-                        
+                    
+                    -- Second phase: calculate new pixel values
                     else
                         temp_pixel_value := ('0' & i_data) - ('0' & min_pixel_value);
                         temp_pixel_value := std_logic_vector(shift_left(unsigned(temp_pixel_value), TO_INTEGER(unsigned(shift_level))));
                     
                         if temp_pixel_value > x"ff" then
                             o_data <= x"ff";
-                            
                         else 
                             o_data <= temp_pixel_value(7 downto 0);
-                        
                         end if;
-                        
+                        -- Write the new value in RAM after the original image
                         o_address <= current_address + n_col * n_rig;
                         o_we <= '1';
                         current_state <= WAIT_WRITE_STATE;
@@ -226,7 +231,7 @@ begin
                     
                 end if;
             
-            -- WAIT WRITE STATE
+            -- WAIT WRITE STATE: wait for the RAM to write
             when WAIT_WRITE_STATE =>
                 o_en <= '1';
                 o_we <= '0';
@@ -237,21 +242,16 @@ begin
                     current_address <= current_address + 1;
                     o_address <= current_address + 1;
                     current_state <= WAIT_READ_STATE;
-                    
                 else
---                    current_address <= x"0000";
---                    o_address <= x"0000";
                     o_done <= '1';
---                    second_phase <= '0';
                     current_state <= DONE_STATE;
-                
                 end if;
             
-            -- DONE STATE
+            -- DONE STATE: wait for start to become 0, then go back to RESET
             when DONE_STATE =>
                 current_state <= DONE_STATE;
                 o_done <= '1';
-                
+                -- If start signal is shut off, return to initial state and wait for new image
                 if i_start = '0' then
                     o_done <= '0';
                     current_state <= RESET_STATE;
