@@ -43,7 +43,7 @@ architecture rtl of project_reti_logiche is
     -- shift_level can have values from 1 to 8 so 4 bits are necessary
     signal shift_level      : std_logic_vector(3 downto 0);
     -- Counts the number of leading zeroes during the calculation of the shift_level
-    signal pos_count        : integer := 8;
+    signal pos_count        : std_logic_vector(3 downto 0) := "1000";
     -- Has value 0 when the module is reading the image dimensions and finding
     -- the maximum and minumum pixel value, it has value 1 when it's calculating
     -- and saving in memory the new pixel values
@@ -68,7 +68,7 @@ begin
         current_address <= (others => '0');
         n_col <= (others => '0');
         n_rig <= (others => '0');
-        pos_count <= 8;
+        pos_count <= "1000";
         max_pixel_value <= (others => '0');
         min_pixel_value <= (others => '1');
         shift_level <= (others => '0');
@@ -105,7 +105,7 @@ begin
                 current_address <= (others => '0');
                 n_col <= (others => '0');
                 n_rig <= (others => '0');
-                pos_count <= 8;
+                pos_count <= "1000";
                 max_pixel_value <= (others => '0');
                 min_pixel_value <= (others => '1');
                 shift_level <= (others => '0');
@@ -214,12 +214,12 @@ begin
                 
                 delta_plus_one := ('0' & max_pixel_value) - ('0' & min_pixel_value) + 1;
                 
-                if delta_plus_one(pos_count) = '0' then
+                if delta_plus_one(to_integer(unsigned(pos_count))) = '0' then
                     pos_count <= pos_count - 1;
                     current_state <= SHIFT_COUNTER_STATE;
                     
-                elsif delta_plus_one(pos_count) = '1' then
-                    shift_level <= std_logic_vector(TO_UNSIGNED(8 - pos_count, 4));
+                elsif delta_plus_one(to_integer(unsigned(pos_count))) = '1' then
+                    shift_level <= std_logic_vector(TO_UNSIGNED(8 - to_integer(unsigned(pos_count)), 4));
                     
                     -- Move back to the first pixel of the image
                     current_address <= x"0002";
