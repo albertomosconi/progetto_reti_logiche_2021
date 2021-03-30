@@ -102,7 +102,7 @@
 
     Lo scopo del progetto è la realizzazione di un componente hardware per svolgere l'equalizzazione dell'istogramma di una immagine in scala di grigi.
     
-    Questa tecnica permette di manipolare i livelli di grigi dei pixel di una data immagine in modo da incrementarne il contrasto. La figura 1 illustra il prima e il dopo di questo processo.
+    L'equalizzazione è una tecnica che permette di manipolare i livelli di grigio dei pixel di una immagine in modo da incrementarne il contrasto. La figura 1 illustra il prima e il dopo di questo processo.
     
     \begin{figure}[h]
         \centering
@@ -117,8 +117,10 @@
 	Sempre sulla RAM, dopo aver concluso l'elaborazione, scrive i nuovi valori dei pixel. 
 
 \renewcommand{\arraystretch}{1.2}
-\begin{center}
-        \begin{tabular}{c|c|l}
+\begin{figure}[h]
+    \centering
+    \begin{tabular}{|c|c|l|}
+    \hline
 		\texttt{INDIRIZZO} & \texttt{VALORE} & \tt NOTE \\
             	\hline
 		0 & 4 & \tt numero di colonne \\
@@ -129,13 +131,15 @@
 		5 & 64 &\\
 		6 & 204 &\\
 		7 & 89 &\\
-		... & ... & 
+		... & ... & \\
+		\hline
 	\end{tabular}
-\end{center}
+    \caption{Rappresentazione della memoria RAM}
+\end{figure}
 \newpage
 \subsection{Un esempio di equalizzazione}
     
-    Si prende come esempio l'immagine sottostante, di dimensioni 4x4 pixel, e si vuole svolgere il processo di equalizzazione.
+    Si prende come esempio l'immagine sottostante, di dimensioni 4x4 pixel, e si svolge il processo di equalizzazione.
     
     \renewcommand{\arraystretch}{1.9}
     \begin{figure}[h]
@@ -163,7 +167,7 @@
     
     \end{figure}
     
-    Per ricalcolare il valore di ogni pixel bisogna prima trovare il massimo e minimo valore che possono assumere nell'immagine originale, e calcolare la differenza tra i due.\\
+    Per ricalcolare il valore di ogni pixel bisogna prima trovare il massimo e minimo valore che può assumere nell'immagine originale, e calcolare la differenza tra i due.\\
     $$\mathtt{
     DELTA\_VALUE = MAX\_PIXEL\_VALUE - MIN\_PIXEL\_VALUE
     }$$
@@ -173,7 +177,7 @@
     
     A questo punto si può ricavare il valore \texttt{SHIFT\_LEVEL}, che serve per gli step successivi.\\
     $$\mathtt{
-    SHIFT\_LEVEL = (8 - floor(log_2(DELT\_VALUE + 1)))
+    SHIFT\_LEVEL = (8 - floor(log_2(DELTA\_VALUE + 1)))
     }$$
     
     Nel caso dell'esempio:\\
@@ -181,12 +185,12 @@
     SHIFT\_LEVEL = (8 - floor(log_2(141))) = (8 - floor(7.139)) = (8 - 7) = 1
     }$$
     
-    Ora, per ognuno dei pixel che compongono l'immagine, si trova il nuovo valore temporaneo:\\
+    Ora, per ognuno dei pixel che compongono l'immagine, si trova il nuovo valore temporaneo\\
     $$\mathtt{
     TEMP\_PIXEL = (CURRENT\_PIXEL\_VALUE - MIN\_PIXEL\_VALUE) << SHIFT\_LEVEL
     }$$
     
-    E si salva il nuovo valore limitandolo ad un massimo di 255:\\
+    e si salva il nuovo valore limitandolo ad un massimo di 255:\\
     $$\mathtt{
     NEW\_PIXEL\_VALUE = min(255, TEMP\_PIXEL)
     }$$
@@ -195,7 +199,8 @@
     
     \renewcommand{\arraystretch}{1.2}
     \begin{center}
-        \begin{tabular}{c|c|c}
+        \begin{tabular}{|c|c|c|}
+            \hline
             \texttt{CURRENT\_PIXEL\_VALUE} & \texttt{TEMP\_PIXEL} & \texttt{NEW\_PIXEL\_VALUE} \\
             \hline
             138 & 148 & 148 \\
@@ -214,6 +219,7 @@
             204 & 280 & 255 \\
             204 & 280 & 255 \\
             64 & 0 & 0 \\
+            \hline
         \end{tabular}
     \end{center}
     
@@ -252,11 +258,11 @@
 \section{Architettura}
     Il processo di equalizzazione si divide in due fasi: 
     \begin{itemize}
-        \item una prima fase in cui vengono cercati e riconosciuti il valore massimo ed il valore minimo tra i pixel costituenti l'immagine ed infine calcolato lo shift level, 
-        \item una seconda fase in cui, ripartendo dall'indirizzo contenente il primo byte, vengono calcolati i valori dei nuovi pixel e scritti nelle celle di memoria della RAM.
+        \item in un primo momento vengono cercati e riconosciuti il valore massimo ed il valore minimo tra i pixel costituenti l'immagine ed infine calcolato lo shift level, 
+        \item in un secondo momento, ripartendo dall'indirizzo contenente il primo byte, vengono calcolati i valori dei nuovi pixel e scritti nelle celle di memoria della RAM.
     \end{itemize}
     
-    Il modulo implementato si comporta come una Macchina a Stati Finiti (FSM).
+    Il comportamento del modulo implementato rispecchia quello di una Macchina a Stati Finiti (FSM).
 
     \subsection{La macchina a stati finiti}
     
@@ -264,12 +270,12 @@
             \centering
             \resizebox{\linewidth}{!}{%
             \begin{tikzpicture}
-                \node[state, initial, accepting] (s0) {reset};
-                \node[state, below right of=s0] (s1) {wait\\read};
-                \node[state, below right of=s1] (s2) {read};
-                \node[state, above right of=s1] (s3) {shift\\counter};
-                \node[state, below left of=s1] (s4) {wait\\write};
-                \node[state, below left of=s0] (s5) {done};
+                \node[state, initial, accepting] (s0) {RESET};
+                \node[state, below right of=s0] (s1) {WAIT\\READ};
+                \node[state, below right of=s1] (s2) {READ};
+                \node[state, above right of=s1] (s3) {SHIFT\\COUNTER};
+                \node[state, below left of=s1] (s4) {WAIT\\WRITE};
+                \node[state, below left of=s0] (s5) {DONE};
                 \draw (s0) edge [loop, out=200, in=130, looseness=5] node {attesa segnale\\di start} (s0);
                 \draw (s0) edge node[above, pos=0.6] {inizio\\elaborazione} (s1);
                 \draw (s1) edge [bend left] node[above, pos=0.6] {lettura ed\\elaborazione\\cella di memoria} (s2);
@@ -371,10 +377,10 @@
     
     \subsection{Ottimizzazioni}
     
-    Si è deciso di ottimizzare sul numero di stati della FSM, in modo che abbia le dimensioni più piccole possibili. 
+    Si è deciso di ottimizzare sul numero di stati della FSM, in modo che questa abbia le dimensioni più piccole possibili. 
     
     Per quanto riguarda il calcolo dei valori di massimo e di minimo dei pixel, è stata inserita un condizione per cui se, prima che vengano confrontati tutti valori dei pixel, \texttt{max\_pixel\_value} vale 255 e \texttt{min\_pixel\_value} vale 0, la FSM passa direttamente allo stato \texttt{SHIFT COUNTER}.
-    
+    \newpage
     Inoltre ogni segnale definito utilizza il numero minimo di bit necessario.
     
     In particolare:
@@ -385,7 +391,7 @@
         
         Risulta quindi necessario che la variabile \texttt{temp\_pixel\_value} sia di 9 bit per salvarne il valore prima di imporre il limite massimo a 255.
         
-        \item Per evitare comportamenti imprevedibili durante la sintesi del circuito, all'inizio \\dell'esecuzione del processo è stato scelto di assegnare esplicitamente ad ogni segnale il proprio valore precedente.
+        \item Per evitare comportamenti imprevedibili durante la sintesi del circuito, all'inizio dell'esecuzione del processo è stato scelto di assegnare esplicitamente ad ogni segnale il proprio valore precedente.
         Questo verrà poi adeguatamente sovrascritto a seconda dello stato corrente.
         In questo modo viene preventivamente impedita la generazione automatica da parte di Vivado di \emph{inferred latches}.
         
@@ -395,7 +401,7 @@
 
     \subsection{Sintesi}
     
-    La sintesi si completa senza warnings o errori e, dall'utilization report, risulta quanto segue.
+    La sintesi si completa senza warnings o errori e, dall'\emph{utilization report}, risulta quanto segue.
     
     \begin{figure}[h]
         \centering
@@ -415,7 +421,7 @@
             \hline
         \end{tabular}
     \end{figure}
-    Dal report di sintesi si evidenzia anche la costituzione del nostro componente:
+    Dal \emph{synthesis report} si evidenzia anche la costituzione del componente da noi sviluppato:
     \begin{figure}[h]
         \centering
         \tt
